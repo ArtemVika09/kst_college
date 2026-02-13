@@ -1,0 +1,293 @@
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonCommands, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Токен вашего бота
+TOKEN = "8387232890:AAGDhHOREkXmN58idiP8tgBWWLVF9mgCdZ8"
+
+# ========== СОЗДАНИЕ КЛАВИАТУР ==========
+def get_main_menu_keyboard():
+    """Главное меню — Reply Keyboard (рядом со значком клавиатуры)"""
+    keyboard = [
+        [KeyboardButton("Расписание 📅")],
+        [KeyboardButton("Прослушивания 🎤"), KeyboardButton("Мастерские 🎸")],
+        [KeyboardButton("Маршрутные листы 🚶")],
+        [KeyboardButton("Запись на Квизбор 📚")],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
+
+
+def get_main_menu_inline():
+    """Главное меню — Inline (для ответов)"""
+    keyboard = [
+        [InlineKeyboardButton("📅 Расписание", callback_data='schedule')],
+        [InlineKeyboardButton("🎧 Прослушивания", callback_data='listenings')],
+        [InlineKeyboardButton("🔧 Мастерские", callback_data='workshops')],
+        [InlineKeyboardButton("🗺️ Маршрутные листы", callback_data='routes')],
+        [InlineKeyboardButton("🎯 Запись на Квизбор", callback_data='quizbor')],
+        [InlineKeyboardButton("ℹ️ О боте", callback_data='about')],
+        [InlineKeyboardButton("⚙️ Настройки", callback_data='settings')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_schedule_keyboard():
+    """Меню расписания"""
+    keyboard = [
+        [InlineKeyboardButton("📆 На неделю", callback_data='schedule_week')],
+        [InlineKeyboardButton("📅 На месяц", callback_data='schedule_month')],
+        [InlineKeyboardButton("👤 Личное расписание", callback_data='schedule_personal')],
+        [InlineKeyboardButton("➕ Добавить событие", callback_data='schedule_add')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='back_main')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_listenings_keyboard():
+    """Меню прослушиваний"""
+    keyboard = [
+        [InlineKeyboardButton("🎵 Новые", callback_data='listening_new')],
+        [InlineKeyboardButton("🔥 Популярные", callback_data='listening_popular')],
+        [InlineKeyboardButton("🏷️ По категориям", callback_data='listening_categories')],
+        [InlineKeyboardButton("💾 Мои аудио", callback_data='listening_my')],
+        [InlineKeyboardButton("📁 Архив", callback_data='listening_archive')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='back_main')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_workshops_keyboard():
+    """Меню мастерских"""
+    keyboard = [
+        [InlineKeyboardButton("🔨 Ближайшие", callback_data='workshop_upcoming')],
+        [InlineKeyboardButton("📝 Записаться", callback_data='workshop_join')],
+        [InlineKeyboardButton("👤 Мои мастерские", callback_data='workshop_my')],
+        [InlineKeyboardButton("⭐ Избранные", callback_data='workshop_favorites')],
+        [InlineKeyboardButton("🏢 Организаторам", callback_data='workshop_organize')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='back_main')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_routes_keyboard():
+    """Меню маршрутных листов"""
+    keyboard = [
+        [InlineKeyboardButton("🆕 Создать маршрут", callback_data='route_create')],
+        [InlineKeyboardButton("📋 Мои маршруты", callback_data='route_my')],
+        [InlineKeyboardButton("👥 Общие", callback_data='route_shared')],
+        [InlineKeyboardButton("📍 Шаблоны", callback_data='route_templates')],
+        [InlineKeyboardButton("🔄 Импорт/Экспорт", callback_data='route_import')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='back_main')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_quizbor_keyboard():
+    """Меню Квизбора"""
+    keyboard = [
+        [InlineKeyboardButton("✍️ Записаться", callback_data='quiz_join')],
+        [InlineKeyboardButton("📅 Расписание", callback_data='quiz_schedule')],
+        [InlineKeyboardButton("📊 Мои записи", callback_data='quiz_my')],
+        [InlineKeyboardButton("🏆 Рейтинг", callback_data='quiz_rating')],
+        [InlineKeyboardButton("❓ Правила", callback_data='quiz_rules')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='back_main')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_settings_keyboard():
+    """Меню настроек"""
+    keyboard = [
+        [InlineKeyboardButton("🔔 Уведомления", callback_data='settings_notify')],
+        [InlineKeyboardButton("🎨 Тема", callback_data='settings_theme')],
+        [InlineKeyboardButton("🌐 Язык", callback_data='settings_language')],
+        [InlineKeyboardButton("🔐 Приватность", callback_data='settings_privacy')],
+        [InlineKeyboardButton("📱 Подписка", callback_data='settings_subscription')],
+        [InlineKeyboardButton("◀️ Главное меню", callback_data='back_main')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# ========== ОБРАБОТЧИКИ КОМАНД ==========
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /start"""
+    user = update.effective_user
+    welcome_text = (
+        f"👋 Привет, {user.first_name}!\n\n"
+        "Добро пожаловать! Выберите раздел в меню:"
+    )
+    
+    await update.message.reply_text(
+        welcome_text,
+        reply_markup=get_main_menu_keyboard(),
+        parse_mode='HTML'
+    )
+
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /menu"""
+    await update.message.reply_text(
+        "📱 <b>Главное меню</b>\nВыберите раздел:",
+        reply_markup=get_main_menu_keyboard(),
+        parse_mode='HTML'
+    )
+
+
+def get_reply_for_menu_button(text: str) -> tuple[str, InlineKeyboardMarkup] | None:
+    """Возвращает (текст, клавиатура) для кнопки главного меню"""
+    menus = {
+        "Расписание 📅": ("📅 <b>Расписание</b>\nВыберите действие:", get_schedule_keyboard()),
+        "Прослушивания 🎤": ("🎧 <b>Прослушивания</b>\nАудиоматериалы и лекции:", get_listenings_keyboard()),
+        "Мастерские 🎸": ("🔧 <b>Мастерские</b>\nОбучение и мастер-классы:", get_workshops_keyboard()),
+        "Маршрутные листы 🚶": ("🗺️ <b>Маршрутные листы</b>\nПланирование и навигация:", get_routes_keyboard()),
+        "Запись на Квизбор 📚": ("🎯 <b>Квизбор</b>\nИнтеллектуальные игры:", get_quizbor_keyboard()),
+    }
+    return menus.get(text)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /help"""
+    help_text = (
+        "<b>📋 Доступные команды:</b>\n\n"
+        "/start — Запустить бота\n"
+        "/menu — Главное меню\n"
+        "/help — Эта справка\n"
+        "/about — О проекте\n\n"
+        "<b>📞 Поддержка:</b>\n"
+        "По вопросам работы бота обращайтесь к администраторам."
+    )
+    await update.message.reply_text(help_text, parse_mode='HTML')
+
+async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /about"""
+    about_text = (
+        "<b>🤖 О боте</b>\n\n"
+        "• <b>Версия:</b> 2.0.0\n"
+        "• <b>Разработчик:</b> Команда QuizMaster\n"
+        "• <b>Дата запуска:</b> Февраль 2024\n\n"
+        "📚 <b>Возможности:</b>\n"
+        "✓ Управление расписанием\n"
+        "✓ Доступ к аудиоматериалам\n"
+        "✓ Запись на мастер-классы\n"
+        "✓ Создание маршрутов\n"
+        "✓ Участие в квизах\n\n"
+        "💡 Бот постоянно развивается!"
+    )
+    await update.message.reply_text(about_text, parse_mode='HTML')
+
+# ========== ОБРАБОТЧИКИ КНОПОК ==========
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик нажатий на кнопки"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    # Определяем, какое меню показывать
+    if data == 'back_main':
+        text = "📱 <b>Главное меню</b>\nВыберите раздел:"
+        reply_markup = get_main_menu_inline()
+    
+    elif data == 'schedule':
+        text = "📅 <b>Расписание</b>\nВыберите действие:"
+        reply_markup = get_schedule_keyboard()
+    
+    elif data == 'listenings':
+        text = "🎧 <b>Прослушивания</b>\nАудиоматериалы и лекции:"
+        reply_markup = get_listenings_keyboard()
+    
+    elif data == 'workshops':
+        text = "🔧 <b>Мастерские</b>\nОбучение и мастер-классы:"
+        reply_markup = get_workshops_keyboard()
+    
+    elif data == 'routes':
+        text = "🗺️ <b>Маршрутные листы</b>\nПланирование и навигация:"
+        reply_markup = get_routes_keyboard()
+    
+    elif data == 'quizbor':
+        text = "🎯 <b>Квизбор</b>\nИнтеллектуальные игры:"
+        reply_markup = get_quizbor_keyboard()
+    
+    elif data == 'settings':
+        text = "⚙️ <b>Настройки</b>\nПерсонализация бота:"
+        reply_markup = get_settings_keyboard()
+    
+    elif data == 'about':
+        about_text = (
+            "<b>ℹ️ О боте</b>\n\n"
+            "Этот бот создан для удобного управления "
+            "вашими активностями и материалами.\n\n"
+            "📊 <b>Статистика:</b>\n"
+            "• Пользователей: 1,250+\n"
+            "• Мастерских: 45+\n"
+            "• Квизов проведено: 120+\n\n"
+            "🔄 <b>Обновления:</b>\n"
+            "Следующее обновление: март 2024"
+        )
+        await query.edit_message_text(
+            about_text, 
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Назад", callback_data='back_main')]
+            ]),
+            parse_mode='HTML'
+        )
+        return
+    
+    else:
+        # Для остальных кнопок показываем заглушку
+        text = f"<b>⚙️ Раздел в разработке</b>\n\nВы выбрали: {data.replace('_', ' ').title()}\n\nСкоро здесь появится функционал!"
+        reply_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад", callback_data='back_main')]
+        ])
+    
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='HTML')
+
+# ========== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ==========
+async def post_init(application: Application):
+    """Установка кнопки меню при запуске бота"""
+    await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик текстовых сообщений и нажатий кнопок меню"""
+    text = update.message.text or ""
+    
+    if text.lower() in ['меню', 'menu', 'начать']:
+        await menu(update, context)
+    elif result := get_reply_for_menu_button(text):
+        msg_text, inline_kb = result
+        await update.message.reply_text(
+            msg_text,
+            reply_markup=inline_kb,
+            parse_mode='HTML'
+        )
+    else:
+        await update.message.reply_text(
+            "Используйте кнопки меню или команду /menu для навигации.",
+            reply_markup=get_main_menu_keyboard()
+        )
+
+# ========== ЗАПУСК БОТА ==========
+def main():
+    """Основная функция запуска бота"""
+    # Создаем приложение
+    application = Application.builder().token(TOKEN).post_init(post_init).build()
+    
+    # Регистрируем обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("menu", menu))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("about", about))
+    
+    # Регистрируем обработчик кнопок
+    application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Регистрируем обработчик текстовых сообщений
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # Запускаем бота
+    print("🤖 Бот запущен!")
+    print("📱 Используйте /start в Telegram")
+    print("⚡ Бот работает...")
+    
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == '__main__':
+    main()
